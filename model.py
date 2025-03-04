@@ -80,12 +80,6 @@ class trainer():
 
         return loss.item(),mape,rmse, idmape
 
-def normalize_adj(adj):
-    rowsum = np.array(adj.sum(1))
-    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
-    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
-    d_mat_inv_sqrt = np.diag(d_inv_sqrt)
-    return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt)
 
 def apply_attention(embedding):
     attn = torch.matmul(embedding, embedding.permute(0, 2, 1))
@@ -142,11 +136,11 @@ class TTG(nn.Module):
 
         self.mlp = nn.Sequential(*layers2).to(device)
 
-        self.linear_q = nn.Linear(self.embedding_dim, 32).to(device)
+        self.linear_q = nn.Linear(self.embedding_dim, residual_channels).to(device)
 
-        self.linear_k = nn.Linear(self.embedding_dim, 32).to(device)
+        self.linear_k = nn.Linear(self.embedding_dim, residual_channels).to(device)
 
-        self.linear_v = nn.Linear(self.embedding_dim, 32).to(device)
+        self.linear_v = nn.Linear(self.embedding_dim, residual_channels).to(device)
 
         self.embedding_week = nn.Embedding(8, self.embedding_dim).to(device)
 
@@ -179,7 +173,7 @@ class TTG(nn.Module):
 
         if self.supports is not None:
             self.supports[0] = F.softmax(F.relu(self.supports[0]), dim=1)
-        new_supports_norm = [normalize_adj(support.cpu().detach().numpy()) for support in self.supports]
+        new_supports_norm = [support.cpu().detach().numpy()for support in self.supports]
 
         if self.adj:
             new_supports_norm.extend([reduced_adj[b, 0, :, :].detach().cpu().numpy() for b in range(reduced_adj.shape[0])])
@@ -195,6 +189,7 @@ class TTG(nn.Module):
         x_reshaped = x.permute(0, 2, 1, 3)
         Adj_with_embeddings = torch.cat([x_reshaped] + spectral_embed_expanded, dim=2).permute(0, 2, 1,3)
 
+
         Adj_embedding = (
             self.reduce_conv_adj(Adj_with_embeddings) if self.adj else self.reduce_conv(Adj_with_embeddings))
         Adj_embedding = Adj_embedding.permute(0, 2, 3, 1).reshape(self.batch_size * 82, self.seq_x, self.embedding_dim)
@@ -203,7 +198,6 @@ class TTG(nn.Module):
         attn = torch.matmul( Adj_embedding.permute(0, 2, 1), Adj_embedding)
         attn = torch.softmax(attn, dim=-1)
         Adj_embedding = torch.matmul(Adj_embedding,attn)
-
 
         weekday = input[:, 1, :, :].int().to(device)
         position = torch.LongTensor([i for i in range(14)]).repeat(batch, num_node, 1).to(device)
